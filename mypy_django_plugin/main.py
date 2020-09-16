@@ -87,11 +87,53 @@ def extract_django_settings_module(config_file_path: Optional[str]) -> str:
     return cast(str, settings).strip('\'"')
 
 
+def extract_mypy_path(config_file_path: Optional[str]) -> Optional[str]:
+    """Return mypy path from config file."""
+
+    # TODO: Refactor this to reduce repeated code
+    def exit(error_type: int) -> NoReturn:
+        """Using mypy's argument parser, raise `SystemExit` to fail hard if validation fails.
+
+        Considering that the plugin's startup duration is around double as long as mypy's, this aims to
+        import and construct objects only when that's required - which happens once and terminates the
+        run. Considering that most of the runs are successful, there's no need for this to linger in the
+        global scope.
+        """
+        from mypy.main import CapturableArgumentParser
+
+        usage = """(config)
+        ...
+        [mypy.plugins.django_stubs]
+            django_settings_module: str (required)
+        ...
+        """.replace("\n" + 8 * " ", "\n")
+        handler = CapturableArgumentParser(prog='(django-stubs) mypy', usage=usage)
+        messages = {1: 'mypy config file is not specified or found',
+                    2: 'no section [mypy.plugins.django-stubs]',
+                    3: 'the setting is not provided'}
+        handler.error("'django_settings_module' is not set: " + messages[error_type])
+
+
+    parser = configparser.ConfigParser()
+    try:
+        parser.read_file(open(cast(str, config_file_path), 'r'), source=config_file_path)
+    except (IsADirectoryError, OSError):
+        exit(1)
+
+    section = "mypy"
+    if not parser.has_section(section):
+        return None
+
+    mypy_path = parser.get(section, "mypy_path", fallback=None)
+
+    return mypy_path
+
 class NewSemanalDjangoPlugin(Plugin):
     def __init__(self, options: Options) -> None:
         super().__init__(options)
         django_settings_module = extract_django_settings_module(options.config_file)
-        self.django_context = DjangoContext(django_settings_module)
+        mypy_path = extract_mypy_path(options.config_file)
+        self.django_context = DjangoContext(django_settings_module, mypy_path)
 
     def _get_current_queryset_bases(self) -> Dict[str, int]:
         model_sym = self.lookup_fully_qualified(fullnames.QUERYSET_CLASS_FULLNAME)

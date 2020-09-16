@@ -45,12 +45,17 @@ def temp_environ():
         os.environ.update(environ)
 
 
-def initialize_django(settings_module: str) -> Tuple['Apps', 'LazySettings']:
+def initialize_django(settings_module: str, mypy_path: str = None) -> Tuple['Apps', 'LazySettings']:
     with temp_environ():
         os.environ['DJANGO_SETTINGS_MODULE'] = settings_module
 
-        # add current directory to sys.path
-        sys.path.append(os.getcwd())
+        # add project directory to sys.path
+        if mypy_path:
+            path = os.path.join(os.getcwd(), mypy_path)
+        else:
+            path = os.getcwd()
+
+        sys.path.append(path)
 
         def noop_class_getitem(cls, key):
             return cls
@@ -82,10 +87,10 @@ class LookupsAreUnsupported(Exception):
 
 
 class DjangoContext:
-    def __init__(self, django_settings_module: str) -> None:
+    def __init__(self, django_settings_module: str, mypy_path: str = None) -> None:
         self.django_settings_module = django_settings_module
 
-        apps, settings = initialize_django(self.django_settings_module)
+        apps, settings = initialize_django(self.django_settings_module, mypy_path)
         self.apps_registry = apps
         self.settings = settings
 
